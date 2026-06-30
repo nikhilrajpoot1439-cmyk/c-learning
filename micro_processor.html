@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMA — Direct Memory Access Explained</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0a0e1a;
+            --surface: #111827;
+            --surface2: #1a2233;
+            --border: #1e2d45;
+            --cpu: #3b82f6;
+            --cpu-glow: #3b82f640;
+            --ram: #10b981;
+            --ram-glow: #10b98140;
+            --dma: #f59e0b;
+            --dma-glow: #f59e0b40;
+            --io: #ec4899;
+            --io-glow: #ec489940;
+            --text: #e2e8f0;
+            --text-dim: #64748b;
+            --accent: #7c3aed;
+            --packet: #facc15;
+            --interrupt: #f97316;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Inter', sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── HEADER ── */
+        header {
+            text-align: center;
+            padding: 40px 20px 20px;
+            position: relative;
+        }
+
+        header::after {
+            content: '';
+            display: block;
+            width: 200px;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            margin: 20px auto 0;
+        }
+
+        .title-eyebrow {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 4px;
+            color: var(--accent);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-size: clamp(28px, 5vw, 52px);
+            font-weight: 600;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, var(--text) 40%, var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            margin-top: 10px;
+            color: var(--text-dim);
+            font-size: 15px;
+            font-weight: 300;
+        }
+
+        /* ── MAIN LAYOUT ── */
+        .main-wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* ── CONTROLS ── */
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 24px 0;
+        }
+
+        .btn {
+            font-family: var(--mono);
+            font-size: 13px;
+            padding: 10px 20px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            background: var(--surface2);
+        }
+
+        .btn.active {
+            border-color: var(--accent);
+            background: #1e1040;
+            color: #a78bfa;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background: #6d28d9;
+        }
+
+        /* ── DIAGRAM CANVAS ── */
+        .diagram-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+            min-height: 520px;
+        }
+
+        .diagram-section::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, #1e1040 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        /* ── GRID for components ── */
+        .comp-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 30px 60px;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* ── COMPONENT BOXES ── */
+        .comp {
+            border-radius: 12px;
+            border: 2px solid;
+            padding: 18px 20px;
+            position: relative;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .comp.pulse {
+            animation: compPulse 0.5s ease;
+        }
+
+        @keyframes compPulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.04);
+            }
+        }
+
+        .comp-cpu {
+            border-color: var(--cpu);
+            box-shadow: 0 0 0 var(--cpu-glow);
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .comp-ram {
+            border-color: var(--ram);
+            box-shadow: 0 0 0 var(--ram-glow);
+            grid-column: 3;
+            grid-row: 1;
+        }
+
+        .comp-dma {
+            border-color: var(--dma);
+            box-shadow: 0 0 0 var(--dma-glow);
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .comp-io {
+            border-color: var(--io);
+            box-shadow: 0 0 0 var(--io-glow);
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        .comp-bus {
+            grid-column: 2;
+            grid-row: 1 / 3;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .comp.active-comp-cpu {
+            box-shadow: 0 0 30px var(--cpu-glow), 0 0 60px var(--cpu-glow);
+        }
+
+        .comp.active-comp-ram {
+            box-shadow: 0 0 30px var(--ram-glow), 0 0 60px var(--ram-glow);
+        }
+
+        .comp.active-comp-dma {
+            box-shadow: 0 0 30px var(--dma-glow), 0 0 60px var(--dma-glow);
+        }
+
+        .comp.active-comp-io {
+            box-shadow: 0 0 30px var(--io-glow), 0 0 60px var(--io-glow);
+        }
+
+        .comp-label {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            opacity: 0.6;
+            margin-bottom: 4px;
+        }
+
+        .comp-name {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 14px;
+        }
+
+        .comp-cpu .comp-name {
+            color: var(--cpu);
+        }
+
+        .comp-ram .comp-name {
+            color: var(--ram);
+        }
+
+        .comp-dma .comp-name {
+            color: var(--dma);
+        }
+
+        .comp-io .comp-name {
+            color: var(--io);
+        }
+
+        /* Pins/Registers inside each comp */
+        .pins {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .pin {
+            font-family: var(--mono);
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            transition: all 0.3s;
+        }
+
+        .pin.active {
+            color: var(--packet);
+            border-color: var(--packet);
+            background: #2a2000;
+        }
+
+        /* ── BUS PANEL ── */
+        .bus-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .bus-line {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .bus-label {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            width: 70px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .bus-track {
+            flex: 1;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bus-fill {
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            border-radius: 4px;
+            transition: none;
+        }
+
+        .bus-addr .bus-fill {
+            background: linear-gradient(90deg, transparent, var(--cpu), transparent);
+        }
+
+        .bus-data .bus-fill {
+            background: linear-gradient(90deg, transparent, var(--ram), transparent);
+        }
+
+        .bus-ctrl .bus-fill {
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        }
+
+        .bus-dma .bus-fill {
+            background: linear-gradient(90deg, transparent, var(--dma), transparent);
+        }
+
+        .bus-irq .bus-fill {
+            background: linear-gradient(90deg, transparent, var(--interrupt), transparent);
+        }
+
+        .bus-fill.flowing {
+            animation: busFlow 0.6s ease-in-out forwards;
+        }
+
+        @keyframes busFlow {
+            0% {
+                left: -100%;
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 1;
+            }
+
+            80% {
+                opacity: 1;
+            }
+
+            100% {
+                left: 100%;
+                opacity: 0;
+            }
+        }
+
+        .bus-fill.pulsing {
+            animation: busPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes busPulse {
+
+            0%,
+            100% {
+                opacity: 0.3;
+                left: -100%;
+            }
+
+            50% {
+                opacity: 1;
+                left: 0%;
+            }
+        }
+
+        /* ── ADDRESS SELECT ── */
+        .addr-select {
+            grid-column: 1;
+            grid-row: 1 / 3;
+            position: absolute;
+            left: -110px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+
+        /* ── STEP INDICATOR ── */
+        .step-track {
+            display: flex;
+            gap: 0;
+            margin: 24px 0 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .step-item {
+            flex: 1;
+            padding: 10px 6px;
+            text-align: center;
+            font-size: 11px;
+            font-family: var(--mono);
+            color: var(--text-dim);
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            transition: all 0.4s;
+            cursor: pointer;
+            line-height: 1.3;
+        }
+
+        .step-item:last-child {
+            border-right: none;
+        }
+
+        .step-item.done {
+            background: #0f1f10;
+            color: var(--ram);
+        }
+
+        .step-item.current {
+            background: #1e1040;
+            color: #a78bfa;
+            border-color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* ── LOG PANEL ── */
+        .log-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            font-family: var(--mono);
+            font-size: 13px;
+            min-height: 130px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 12px;
+            padding: 4px 0;
+            border-bottom: 1px solid #0d1524;
+            opacity: 0;
+            transform: translateY(6px);
+            animation: logIn 0.3s ease forwards;
+        }
+
+        @keyframes logIn {
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        .log-ts {
+            color: var(--text-dim);
+            width: 60px;
+            flex-shrink: 0;
+        }
+
+        .log-src {
+            width: 55px;
+            flex-shrink: 0;
+            font-weight: 600;
+        }
+
+        .log-src.cpu {
+            color: var(--cpu);
+        }
+
+        .log-src.ram {
+            color: var(--ram);
+        }
+
+        .log-src.dma {
+            color: var(--dma);
+        }
+
+        .log-src.io {
+            color: var(--io);
+        }
+
+        .log-src.sys {
+            color: var(--accent);
+        }
+
+        .log-msg {
+            color: var(--text);
+        }
+
+        /* ── INFO CARDS ── */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .info-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .info-card h3 {
+            font-size: 13px;
+            font-family: var(--mono);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 10px;
+        }
+
+        .info-card p {
+            font-size: 14px;
+            line-height: 1.7;
+            color: var(--text);
+        }
+
+        .info-card.highlight {
+            border-color: var(--accent);
+            background: #0f0a20;
+        }
+
+        .info-card.highlight h3 {
+            color: var(--accent);
+        }
+
+        /* ── PACKET ANIMATION (floating data block) ── */
+        .packet {
+            position: absolute;
+            width: 36px;
+            height: 22px;
+            border-radius: 4px;
+            background: var(--packet);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--mono);
+            font-size: 9px;
+            color: #000;
+            font-weight: 700;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        /* ── COMPARISON TABLE ── */
+        .compare-wrap {
+            margin-top: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: var(--surface2);
+            padding: 12px 16px;
+            font-family: var(--mono);
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-align: left;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 11px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: var(--surface2);
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .tag-cpu {
+            background: #1a2f4a;
+            color: var(--cpu);
+        }
+
+        .tag-dma {
+            background: #2a1f00;
+            color: var(--dma);
+        }
+
+        .tag-good {
+            background: #0d2a1a;
+            color: var(--ram);
+        }
+
+        .tag-bad {
+            background: #2a0a0a;
+            color: #f87171;
+        }
+
+        /* ── SPEED METER ── */
+        .speed-row {
+            display: flex;
+            gap: 16px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .speed-card {
+            flex: 1;
+            min-width: 160px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .speed-label {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+
+        .speed-bar-bg {
+            height: 10px;
+            background: var(--surface);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .speed-bar-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .speed-val {
+            font-family: var(--mono);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        /* ── FOOTER ── */
+        footer {
+            text-align: center;
+            padding: 32px;
+            font-size: 12px;
+            color: var(--text-dim);
+            font-family: var(--mono);
+            letter-spacing: 1px;
+        }
+
+        @media (max-width: 700px) {
+            .comp-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+            }
+
+            .comp-bus {
+                display: none;
+            }
+
+            .comp-cpu {
+                grid-column: 1;
+                grid-row: 1;
+            }
+
+            .comp-ram {
+                grid-column: 2;
+                grid-row: 1;
+            }
+
+            .comp-dma {
+                grid-column: 1;
+                grid-row: 2;
+            }
+
+            .comp-io {
+                grid-column: 2;
+                grid-row: 2;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="title-eyebrow">Computer Architecture</div>
+        <h1>Direct Memory Access</h1>
+        <p class="subtitle">How the DMA controller moves data without interrupting the CPU</p>
+    </header>
+
+    <div class="main-wrap">
+
+        <!-- CONTROLS -->
+        <div class="controls">
+            <button class="btn btn-primary" id="btnPlay">▶️ Run DMA Transfer</button>
+            <button class="btn" id="btnStep">⏭️ Step Through</button>
+            <button class="btn" id="btnReset">↺ Reset</button>
+            <button class="btn" id="btnCompare">⚡ CPU vs DMA</button>
+            <button class="btn" id="btnSpeed">↕️ Speed: Normal</button>
+        </div>
+
+        <!-- STEP PROGRESS -->
+        <div class="step-track" id="stepTrack">
+            <div class="step-item" data-step="0">① CPU Issues<br>DMA Request</div>
+            <div class="step-item" data-step="1">② DMA Gets<br>Bus Control</div>
+            <div class="step-item" data-step="2">③ I/O→DMA<br>Data Transfer</div>
+            <div class="step-item" data-step="3">④ DMA→RAM<br>Write Data</div>
+            <div class="step-item" data-step="4">⑤ DMA Raises<br>Interrupt</div>
+            <div class="step-item" data-step="5">⑥ CPU Resumes<br>Normal Work</div>
+        </div>
+
+        <!-- MAIN DIAGRAM -->
+        <div class="diagram-section" id="diagramSection">
+
+            <div class="comp-grid" id="compGrid">
+
+                <!-- CPU -->
+                <div class="comp comp-cpu" id="compCPU">
+                    <div class="comp-label">Processor</div>
+                    <div class="comp-name">CPU</div>
+                    <div class="pins">
+                        <span class="pin" id="pin-rw-cpu">RD / WR</span>
+                        <span class="pin" id="pin-addr-cpu">Address</span>
+                        <span class="pin" id="pin-data-cpu">Data</span>
+                        <span class="pin" id="pin-bg">BG</span>
+                        <span class="pin" id="pin-br">BR</span>
+                        <span class="pin" id="pin-int-cpu">INT</span>
+                    </div>
+                </div>
+
+                <!-- BUS PANEL (middle column) -->
+                <div class="comp-bus">
+                    <div
+                        style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;text-align:center;margin-bottom:4px">
+                        SHARED BUS</div>
+                    <div class="bus-panel">
+                        <div class="bus-line bus-addr">
+                            <span class="bus-label">Address</span>
+                            <div class="bus-track">
+                                <div class="bus-fill" id="busAddr"></div>
+                            </div>
+                        </div>
+                        <div class="bus-line bus-data">
+                            <span class="bus-label">Data</span>
+                            <div class="bus-track">
+                                <div class="bus-fill" id="busData"></div>
+                            </div>
+                        </div>
+                        <div class="bus-line bus-ctrl">
+                            <span class="bus-label">Read Ctrl</span>
+                            <div class="bus-track">
+                                <div class="bus-fill" id="busRdCtrl"></div>
+                            </div>
+                        </div>
+                        <div class="bus-line bus-ctrl">
+                            <span class="bus-label">Write Ctrl</span>
+                            <div class="bus-track">
+                                <div class="bus-fill" id="busWrCtrl"></div>
+                            </div>
+                        </div>
+                        <div class="bus-line bus-dma">
+                            <span class="bus-label">DMA Req</span>
+                            <div class="bus-track">
+                                <div class="bus-fill" id="busDmaReq"></div>
+                            </div>
+                        </div>
+                        <div class="bus-line bus-dma">
+                            <span class="bus-label">DMA Ack</span>
+                            <div class="bus-track">
+                                <div class="bus-fill" id="busDmaAck"></div>
+                            </div>
+                        </div>
+                        <div class="bus-line bus-irq">
+                            <span class="bus-label">Interrupt</span>
+                            <div class="bus-track">
+                                <div class="bus-fill" id="busIRQ"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RAM -->
+                <div class="comp comp-ram" id="compRAM">
+                    <div class="comp-label">Memory</div>
+                    <div class="comp-name">RAM</div>
+                    <div class="pins">
+                        <span class="pin" id="pin-rw-ram">RD / WR</span>
+                        <span class="pin" id="pin-addr-ram">Address</span>
+                        <span class="pin" id="pin-data-ram">Data</span>
+                    </div>
+                    <div id="ramCells"
+                        style="margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;">
+                        <!-- filled by JS -->
+                    </div>
+                </div>
+
+                <!-- DMA -->
+                <div class="comp comp-dma" id="compDMA">
+                    <div class="comp-label">Controller</div>
+                    <div class="comp-name">DMA</div>
+                    <div class="pins">
+                        <span class="pin" id="pin-rw-dma">RD / WR</span>
+                        <span class="pin" id="pin-addr-dma">Address</span>
+                        <span class="pin" id="pin-data-dma">Data</span>
+                        <span class="pin" id="pin-ds">DS</span>
+                        <span class="pin" id="pin-rs">RS</span>
+                        <span class="pin" id="pin-br-dma">BR</span>
+                        <span class="pin" id="pin-bg-dma">BG</span>
+                        <span class="pin" id="pin-int-dma">INT</span>
+                    </div>
+                    <div id="dmaStatus"
+                        style="margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--text-dim);">IDLE</div>
+                </div>
+
+                <!-- empty center bottom -->
+                <div></div>
+
+                <!-- I/O -->
+                <div class="comp comp-io" id="compIO">
+                    <div class="comp-label">Peripheral</div>
+                    <div class="comp-name">I/O Device</div>
+                    <div class="pins">
+                        <span class="pin" id="pin-dma-req">DMA Req</span>
+                        <span class="pin" id="pin-dma-ack">DMA Ack</span>
+                    </div>
+                    <div id="ioBuffer" style="margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--io);">
+                        <div style="color:var(--text-dim);margin-bottom:4px">Buffer:</div>
+                        <div id="ioData">[ A0 B1 C2 D3 E4 F5 G6 H7 ]</div>
+                    </div>
+                </div>
+
+            </div><!-- /comp-grid -->
+        </div><!-- /diagram-section -->
+
+        <!-- LOG PANEL -->
+        <div class="log-panel" id="logPanel">
+            <div class="log-entry">
+                <span class="log-ts">00:00</span>
+                <span class="log-src sys">SYS</span>
+                <span class="log-msg">DMA Transfer Simulator ready. Press ▶️ to begin.</span>
+            </div>
+        </div>
+
+        <!-- INFO CARDS -->
+        <div class="info-grid" id="infoGrid">
+            <div class="info-card highlight">
+                <h3>What is DMA?</h3>
+                <p>Direct Memory Access lets an I/O device transfer data straight to RAM <strong>without going through
+                        the CPU</strong>. The CPU sets it up, then goes back to work while the DMA controller handles
+                    the heavy lifting.</p>
+            </div>
+            <div class="info-card">
+                <h3>Why DMA?</h3>
+                <p>Without DMA, the CPU must read each byte from I/O and write it to RAM individually — thousands of
+                    instructions. DMA offloads this bulk transfer so the CPU can execute other programs concurrently.
+                </p>
+            </div>
+            <div class="info-card">
+                <h3>Bus Grant (BG / BR)</h3>
+                <p><strong>BR (Bus Request)</strong>: DMA asks CPU for control of the system bus.<br><strong>BG (Bus
+                        Grant)</strong>: CPU says "OK, it's yours" and tri-states (disconnects) from the bus.</p>
+            </div>
+            <div class="info-card">
+                <h3>Interrupt Signal</h3>
+                <p>When all bytes have been transferred, the DMA controller fires an <strong>interrupt</strong> to the
+                    CPU. The CPU pauses its current task, checks which device interrupted, and handles the completion
+                    event.</p>
+            </div>
+        </div>
+
+        <!-- CPU vs DMA COMPARISON -->
+        <div id="compareSection" style="display:none;margin-top:24px">
+            <div class="compare-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aspect</th>
+                            <th><span class="tag tag-cpu">CPU-Controlled I/O</span></th>
+                            <th><span class="tag tag-dma">DMA Transfer</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Who moves data?</td>
+                            <td>CPU reads every byte and writes to RAM</td>
+                            <td>DMA controller autonomously moves blocks</td>
+                        </tr>
+                        <tr>
+                            <td>CPU utilization</td>
+                            <td><span class="tag tag-bad">100% busy on I/O</span></td>
+                            <td><span class="tag tag-good">Free to run other code</span></td>
+                        </tr>
+                        <tr>
+                            <td>Throughput</td>
+                            <td>Limited by instruction overhead per byte</td>
+                            <td>Near memory-bus-speed bulk transfer</td>
+                        </tr>
+                        <tr>
+                            <td>Latency (1 MB disk read)</td>
+                            <td>Millions of CPU cycles wasted</td>
+                            <td>CPU notified only on completion</td>
+                        </tr>
+                        <tr>
+                            <td>Bus ownership</td>
+                            <td>CPU owns bus at all times</td>
+                            <td>DMA borrows bus, CPU yields temporarily</td>
+                        </tr>
+                        <tr>
+                            <td>Complexity</td>
+                            <td>Simple hardware; complex CPU code</td>
+                            <td>Simple OS code; dedicated controller</td>
+                        </tr>
+                        <tr>
+                            <td>Use cases</td>
+                            <td>Simple, slow, infrequent I/O</td>
+                            <td>Disk, GPU, network, audio, USB, video</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- SPEED VISUAL -->
+            <div class="speed-row" id="speedRow">
+                <div class="speed-card">
+                    <div class="speed-label">CPU-controlled throughput</div>
+                    <div class="speed-bar-bg">
+                        <div class="speed-bar-fill" style="background:var(--cpu);width:0%" id="barCPU"></div>
+                    </div>
+                    <div class="speed-val" style="color:var(--cpu)">0 MB/s</div>
+                </div>
+                <div class="speed-card">
+                    <div class="speed-label">DMA throughput</div>
+                    <div class="speed-bar-bg">
+                        <div class="speed-bar-fill" style="background:var(--ram);width:0%" id="barDMA"></div>
+                    </div>
+                    <div class="speed-val" style="color:var(--ram)">0 MB/s</div>
+                </div>
+                <div class="speed-card">
+                    <div class="speed-label">CPU free time (DMA mode)</div>
+                    <div class="speed-bar-bg">
+                        <div class="speed-bar-fill" style="background:var(--dma);width:0%" id="barFree"></div>
+                    </div>
+                    <div class="speed-val" style="color:var(--dma)">0%</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /main-wrap -->
+
+    <footer>DMA — Direct Memory Access &nbsp;|&nbsp; Interactive Architecture Explainer</footer>
+
+    <script>
+        /* ── UTILITY ── */
+        const $ = id => document.getElementById(id);
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        let stepDelay = 1900;
+        let running = false;
+        let stepMode = false;
+        let stepResolve = null;
+        let currentStep = -1;
+        let logTime = 0;
+        let compareVisible = false;
+
+        /* ── RAM CELLS ── */
+        const RAM_SIZE = 8;
+        const ramState = Array(RAM_SIZE).fill('--');
+        function renderRAM() {
+            const c = $('ramCells');
+            c.innerHTML = ramState.map((v, i) =>
+                `<div id="rc${i}" style="background:${v === '--' ? 'var(--surface2)' : '#0d2a1a'};
+    border:1px solid ${v === '--' ? 'var(--border)' : 'var(--ram)'};
+    border-radius:4px;padding:4px;text-align:center;
+    font-family:var(--mono);font-size:10px;
+    color:${v === '--' ? 'var(--text-dim)' : 'var(--ram)'};
+    transition:all 0.3s">${v === '--' ? 'M' + i : '<b>' + v + '</b>'}</div>`
+  ).join('');
+}
+renderRAM();
+
+/* ── LOG ── */
+function log(src, msg) {
+  logTime++;
+  const ts = String(logTime).padStart(2,'0')+':'+String(Math.floor(Math.random()*59)).padStart(2,'0');
+  const p = $('logPanel');
+  const e = document.createElement('div');
+  e.className = 'log-entry';
+  e.innerHTML = `<span class="log-ts">${ts}</span><span class="log-src ${src}">${src.toUpperCase()}</span><span class="log-msg">${msg}</span>`;
+  p.appendChild(e);
+  p.scrollTop = p.scrollHeight;
+}
+
+/* ── PIN HIGHLIGHT ── */
+function flashPin(id, dur=1600) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.add('active');
+  setTimeout(() => el.classList.remove('active'), dur);
+}
+
+/* ── BUS ANIMATE ── */
+function flowBus(id, times=1) {
+  const el = $(id);
+  if (!el) return Promise.resolve();
+  return new Promise(res => {
+    let count = 0;
+    function go() {
+      el.classList.remove('flowing');
+      void el.offsetWidth;
+      el.classList.add('flowing');
+      count++;
+      if (count < times) {
+        el.addEventListener('animationend', function h() {
+          el.removeEventListener('animationend', h);
+          setTimeout(go, 80);
+        });
+      } else {
+        el.addEventListener('animationend', function h() {
+          el.removeEventListener('animationend', h);
+          res();
+        });
+      }
+    }
+    go();
+  });
+}
+
+/* ── COMPONENT PULSE ── */
+function pulseComp(id, colorClass) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.add('pulse', `active-comp-${colorClass}`);
+  setTimeout(() => {
+    el.classList.remove('pulse');
+    setTimeout(() => el.classList.remove(`active-comp-${colorClass}`), 1500);
+  }, 500);
+}
+
+/* ── STEP TRACK ── */
+function setStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.step-item').forEach((el, i) => {
+    el.classList.remove('current','done');
+    if (i < n) el.classList.add('done');
+    if (i === n) el.classList.add('current');
+  });
+}
+
+/* ── DMA STATUS ── */
+function setDMAStatus(txt, color='var(--dma)') {
+  $('dmaStatus').textContent = txt;
+  $('dmaStatus').style.color = color;
+}
+
+/* ── STEP GATE ── */
+async function gate() {
+  if (stepMode) {
+    await new Promise(res => { stepResolve = res; });
+  } else {
+    await sleep(stepDelay);
+  }
+}
+
+/* ── MAIN ANIMATION SEQUENCE ── */
+async function runDMA() {
+  if (running) return;
+  running = true;
+  $('btnPlay').disabled = true;
+  $('btnStep').disabled = !stepMode;
+  $('btnStep').textContent = stepMode ? '⏭️ Next Step' : '⏭️ Step Through';
+
+  // Reset
+  ramState.fill('--'); renderRAM();
+  setDMAStatus('IDLE');
+  $('ioData').textContent = '[ A0 B1 C2 D3 E4 F5 G6 H7 ]';
+  $('ioData').style.color = 'var(--io)';
+
+  const bytes = ['A0','B1','C2','D3','E4','F5','G6','H7'];
+
+  /* ── STEP 0: CPU programs DMA ── */
+  setStep(0);
+  log('cpu', 'Starting I/O read. Programming DMA controller with source address, destination, and byte count.');
+  pulseComp('compCPU','cpu');
+  flashPin('pin-rw-cpu'); flashPin('pin-addr-cpu'); flashPin('pin-data-cpu');
+  await gate();
+  await flowBus('busAddr'); 
+  await flowBus('busData');
+  log('dma', 'Registers loaded: SRC=I/O_BASE, DST=0x1000, COUNT=8');
+  pulseComp('compDMA','dma');
+  setDMAStatus('PROGRAMMED');
+  await gate();
+
+  /* ── STEP 1: DMA requests bus ── */
+  setStep(1);
+  log('dma', 'Asserting BR (Bus Request) → CPU...');
+  flashPin('pin-br-dma'); flashPin('pin-br');
+  await flowBus('busDmaReq',2);
+  await gate();
+  log('cpu', 'BG (Bus Grant) asserted. CPU releasing bus and entering hold state.');
+  flashPin('pin-bg'); flashPin('pin-bg-dma');
+  pulseComp('compCPU','cpu');
+  pulseComp('compDMA','dma');
+  await flowBus('busAddr');
+  setDMAStatus('BUS MASTER');
+  log('sys', 'DMA controller now owns the address/data/control buses.');
+  await gate();
+
+  /* ── STEPS 2+3: Transfer each byte ── */
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = bytes[i];
+
+    /* I/O → DMA */
+    setStep(2);
+    log('io', `DMA_REQ: byte [${byte}] ready on I/O data lines.`);
+    flashPin('pin-dma-req');
+    pulseComp('compIO','io');
+    await flowBus('busDmaReq');
+    await gate();
+
+    log('dma', `DMA_ACK sent. Reading byte ${byte} from I/O device.`);
+    flashPin('pin-dma-ack'); flashPin('pin-rw-dma'); flashPin('pin-data-dma');
+    pulseComp('compDMA','dma');
+    await flowBus('busDmaAck');
+    setDMAStatus(`RD ${byte}`);
+    await gate();
+
+    /* DMA → RAM */
+    setStep(3);
+    log('dma', `Writing byte ${byte} to RAM address 0x${(0x1000 + i * 4).toString(16).toUpperCase()}.`);
+    flashPin('pin-rw-ram'); flashPin('pin-addr-ram'); flashPin('pin-data-ram');
+    await flowBus('busAddr');
+    await flowBus('busData');
+    await flowBus('busWrCtrl');
+    pulseComp('compRAM','ram');
+    setDMAStatus(`WR ${byte} → RAM`);
+    ramState[i] = byte;
+    renderRAM();
+    // flash the new cell
+    setTimeout(() => {
+      const cell = $(`rc${i}`);
+      if (cell) { cell.style.transform = 'scale(1.2)'; setTimeout(() => cell.style.transform = '', 300); }
+    }, 100);
+    await gate();
+  }
+
+  /* ── STEP 4: DMA fires interrupt ── */
+  setStep(4);
+  setDMAStatus('COMPLETE');
+  log('dma', 'All 8 bytes transferred. Asserting INTERRUPT to CPU.');
+  flashPin('pin-int-dma'); flashPin('pin-int-cpu');
+  pulseComp('compDMA','dma');
+  await flowBus('busIRQ', 3);
+  $('ioData').textContent = '[ -- -- -- -- -- -- -- -- ]';
+  $('ioData').style.color = 'var(--text-dim)';
+  await gate();
+
+  /* ── STEP 5: CPU resumes ── */
+  setStep(5);
+  log('cpu', 'Interrupt received! Entering ISR: transfer complete, 8 bytes at 0x1000.');
+  pulseComp('compCPU','cpu');
+  flashPin('pin-int-cpu');
+  await flowBus('busIRQ');
+  await gate();
+  log('cpu', 'ISR done. Bus control restored. CPU resumes normal execution.');
+  setDMAStatus('IDLE');
+  await flowBus('busAddr');
+  pulseComp('compCPU','cpu');
+  await gate();
+
+  log('sys', '✓ DMA transfer complete. 8 bytes in RAM. CPU was free during entire transfer.');
+  running = false;
+  $('btnPlay').disabled = false;
+  $('btnStep').disabled = false;
+  $('btnStep').textContent = '⏭️ Step Through';
+  stepMode = false;
+  $('btnStep').classList.remove('active');
+}
+
+/* ── BUTTONS ── */
+$('btnPlay').addEventListener('click', () => {
+  stepMode = false;
+  $('btnStep').classList.remove('active');
+  runDMA();
+});
+
+$('btnStep').addEventListener('click', () => {
+  if (!running) {
+    stepMode = true;
+    $('btnStep').classList.add('active');
+    $('btnStep').textContent = '⏭️ Next Step';
+    runDMA();
+  } else if (stepResolve) {
+    const res = stepResolve;
+    stepResolve = null;
+    res();
+  }
+});
+
+$('btnReset').addEventListener('click', () => {
+  if (running) {
+    running = false;
+    stepResolve && stepResolve();
+    stepResolve = null;
+  }
+  stepMode = false;
+  currentStep = -1;
+  $('btnStep').classList.remove('active');
+  $('btnStep').textContent = '⏭️ Step Through';
+  $('btnPlay').disabled = false;
+  $('btnStep').disabled = false;
+  document.querySelectorAll('.step-item').forEach(e => e.classList.remove('current','done'));
+  ramState.fill('--'); renderRAM();
+  setDMAStatus('IDLE');
+  $('ioData').textContent = '[ A0 B1 C2 D3 E4 F5 G6 H7 ]';
+  $('ioData').style.color = 'var(--io)';
+  $('logPanel').innerHTML = '<div class="log-entry"><span class="log-ts">00:00</span><span class="log-src sys">SYS</span><span class="log-msg">Reset. Ready for new transfer.</span></div>';
+  logTime = 0;
+  document.querySelectorAll('.pin').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.comp').forEach(c => {
+    c.classList.remove('active-comp-cpu','active-comp-ram','active-comp-dma','active-comp-io','pulse');
+  });
+});
+
+$('btnCompare').addEventListener('click', () => {
+  compareVisible = !compareVisible;
+  $('compareSection').style.display = compareVisible ? 'block' : 'none';
+  $('btnCompare').textContent = compareVisible ? '✕ Hide Comparison' : '⚡ CPU vs DMA';
+  if (compareVisible) {
+    setTimeout(() => {
+      $('barCPU').style.width = '22%'; $('barCPU').nextElementSibling && ($('barCPU').parentElement.nextElementSibling.textContent = '110 MB/s');
+      $('barDMA').style.width = '88%';
+      $('barFree').style.width = '78%';
+    }, 100);
+    const cpuVal = document.querySelector('#speedRow .speed-card:nth-child(1) .speed-val');
+    const dmaVal = document.querySelector('#speedRow .speed-card:nth-child(2) .speed-val');
+    const freeVal = document.querySelector('#speedRow .speed-card:nth-child(3) .speed-val');
+    setTimeout(() => {
+      if (cpuVal)  animateValue(cpuVal, 0, 110, 1400, v => v+' MB/s');
+      if (dmaVal)  animateValue(dmaVal, 0, 4400, 1400, v => v+' MB/s');
+      if (freeVal) animateValue(freeVal, 0, 92, 1400, v => v+'%');
+      $('barCPU').style.width = '22%';
+      $('barDMA').style.width = '88%';
+      $('barFree').style.width = '78%';
+    }, 200);
+  }
+});
+
+let speedFast = false;
+$('btnSpeed').addEventListener('click', () => {
+  speedFast = !speedFast;
+  stepDelay = speedFast ? 350 : 900;a
+  $('btnSpeed').textContent = `↕️ Speed: ${speedFast ? 'Fast' : 'Normal'}`;
+});
+
+function animateValue(el, from, to, dur, fmt) {
+  const start = Date.now();
+  function tick() {
+    const p = Math.min((Date.now()-start)/dur, 1);
+    el.textContent = fmt(Math.round(from + (to-from)*p));
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ── STEP CLICK (manual navigation info) ── */
+document.querySelectorAll('.step-item').forEach((el,i) => {
+  el.title = 'Click ▶️ or ⏭️ to animate through steps';
+});
+
+/* ── INITIAL LOG ── */
+log('sys', 'Simulation loaded. I/O device has 8 bytes ready to transfer to RAM.');
+log('cpu', 'CPU is busy running userspace processes. DMA request is pending...');
+    </script>
+</body>
+
+</html>
